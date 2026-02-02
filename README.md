@@ -1,4 +1,4 @@
-```markdown
+
 [🇨🇳 中文版 (Chinese Version)](README_CN.md)
 # 📉 USDT Premium Monitor (Rust)
 

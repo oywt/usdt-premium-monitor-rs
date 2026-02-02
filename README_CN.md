@@ -1,4 +1,4 @@
-```markdown
+
 [🇺🇸 English Version](README.md)
 # 📉 USDT Premium Monitor (Rust)
 
