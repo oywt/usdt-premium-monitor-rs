@@ -1,0 +1,36 @@
+[package]
+name = "monitor_usdt"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# 异步运行时
+tokio = { version = "1", features = ["full"] }
+# HTTP 客户端 (支持 TLS 和 JSON)
+reqwest = { version = "0.11", features = ["json", "rustls-tls", "gzip", "brotli", "deflate", "stream"] }
+# 序列化/反序列化
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# 错误处理
+anyhow = "1.0"
+thiserror = "1.0"
+# 日志与追踪
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+# 邮件库
+lettre = { version = "0.11", features = ["tokio1", "tokio1-native-tls"] }
+# 时间处理
+chrono = "0.4"
+# 配置加载
+config = "0.13"
+dotenv = "0.15"
+# 异步 Trait 支持
+async-trait = "0.1"
+tracing-appender = "0.2.4"
+
+[profile.dev]
+split-debuginfo = "unpacked"
+debug = 0
+strip = "debuginfo"
+
+tracing-appender = "0.2"

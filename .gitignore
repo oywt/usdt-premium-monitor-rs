@@ -1,0 +1,9 @@
+/target
+**/*.rs.bk
+*.log
+/logs
+.env
+.DS_Store
+.idea/
+
+
