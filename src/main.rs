@@ -104,27 +104,31 @@ async fn process_exchange(
             let premium = (usdt_price - forex_rate) / forex_rate;
             let premium_pct = premium * 100.0;
 
-
-
+            // 🔥 修改点：在日志中加入 amount 字段
             info!(
                 exchange = %source_name,
                 usdt = usdt_price,
                 forex = forex_rate,
                 premium = premium_pct,
-                "📊 市场行情: USDT={:.4} 溢价={:.2}%",
+                amount = %config.filter_amount,
+                "📊 市场行情: USDT={:.4} 溢价={:.2}% 额度={}",
                 usdt_price,
-                premium_pct
+                premium_pct,
+                config.filter_amount
             );
 
             let is_alert_sent = *alert_states.get(source_name).unwrap_or(&false);
 
             if premium < config.premium_threshold {
                 if !is_alert_sent {
+                    // 🔥 修改点：在报警日志中也加入额度信息
                     warn!(
                         exchange = %source_name,
                         premium = premium_pct,
-                        "🔥 发现负溢价机会! 当前溢价: {:.2}%",
-                        premium_pct
+                        amount = %config.filter_amount,
+                        "🔥 发现负溢价机会! 当前溢价: {:.2}% (额度: {})",
+                        premium_pct,
+                        config.filter_amount
                     );
 
                     match notifier.send_alert(source_name, usdt_price, forex_rate, premium) {
@@ -147,4 +151,3 @@ async fn process_exchange(
         }
     }
 }
-
