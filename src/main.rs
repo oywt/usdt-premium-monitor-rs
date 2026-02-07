@@ -3,6 +3,9 @@ mod network;
 mod notifier;
 mod sources;
 mod logger;
+mod strategy;
+
+use crate::strategy::AlertStrategy;
 
 use crate::config::AppConfig;
 use crate::sources::{ExchangeSource, ForexSource};
@@ -60,6 +63,7 @@ async fn main() -> anyhow::Result<()> {
     info!("🚀 监控服务已就绪，开始循环...");
 
     let mut alert_states: std::collections::HashMap<String, bool> = std::collections::HashMap::new();
+    let mut strategy = AlertStrategy::new(3); // 连续 3 次命中才报警
     let mut interval = time::interval(Duration::from_secs(config.check_interval));
 
     // 5. 主循环
@@ -83,7 +87,8 @@ async fn main() -> anyhow::Result<()> {
                 forex_rate,
                 &config,
                 &notifier,
-                &mut alert_states
+                &mut alert_states,
+                &mut strategy,
             ).await;
         }
     }
@@ -95,7 +100,8 @@ async fn process_exchange(
     forex_rate: f64,
     config: &AppConfig,
     notifier: &Notifier,
-    alert_states: &mut std::collections::HashMap<String, bool>
+    alert_states: &mut std::collections::HashMap<String, bool>,
+    strategy: &mut AlertStrategy,
 ) {
     let source_name = source.name();
 
@@ -104,46 +110,44 @@ async fn process_exchange(
             let premium = (usdt_price - forex_rate) / forex_rate;
             let premium_pct = premium * 100.0;
 
-            // 🔥 修改点：在日志中加入 amount 字段
+            // ✅ 修复点：补全所有核心业务字段 (汇率、溢价、额度)
             info!(
                 exchange = %source_name,
                 usdt = usdt_price,
                 forex = forex_rate,
-                premium = premium_pct,
-                amount = %config.filter_amount,
-                "📊 市场行情: USDT={:.4} 溢价={:.2}% 额度={}",
+                premium = %format!("{:.2}%", premium_pct),
+                amount = %config.filter_amount, // ✅ 明确显示你查询的金额
+                "📊 市场行情: USDT={:.4} 汇率={:.4} 溢价={:.2}% (额度={})",
                 usdt_price,
+                forex_rate,
                 premium_pct,
                 config.filter_amount
             );
 
+            let is_below = premium < config.premium_threshold;
             let is_alert_sent = *alert_states.get(source_name).unwrap_or(&false);
 
-            if premium < config.premium_threshold {
-                if !is_alert_sent {
-                    // 🔥 修改点：在报警日志中也加入额度信息
-                    warn!(
-                        exchange = %source_name,
-                        premium = premium_pct,
-                        amount = %config.filter_amount,
-                        "🔥 发现负溢价机会! 当前溢价: {:.2}% (额度: {})",
-                        premium_pct,
-                        config.filter_amount
-                    );
+            // 策略决策逻辑：只有满足 strategy 内部的连续命中逻辑才会触发报警
+            if strategy.should_alert(source_name, is_below) && !is_alert_sent {
+                warn!(
+                    exchange = %source_name,
+                    premium = %format!("{:.2}%", premium_pct),
+                    "🔥 确认真实的负溢价机会! 正在触发报警..."
+                );
+                if notifier.send_alert(source_name, usdt_price, forex_rate, premium).is_ok() {
+                    alert_states.insert(source_name.to_string(), true);
+                }
+            }
 
-                    match notifier.send_alert(source_name, usdt_price, forex_rate, premium) {
-                        Ok(_) => {
-                            alert_states.insert(source_name.to_string(), true);
-                        },
-                        Err(e) => error!(exchange = %source_name, error = ?e, "❌ 邮件发送失败"),
-                    }
-                }
-            } else {
-                // 缓冲区重置 (Threshold + 0.5%)
-                if is_alert_sent && premium > (config.premium_threshold + 0.005) {
-                    info!(exchange = %source_name, "✅ 溢价回归正常，重置报警状态");
-                    alert_states.insert(source_name.to_string(), false);
-                }
+            // 缓冲区重置逻辑
+            if is_alert_sent && premium > (config.premium_threshold + 0.005) {
+                info!(
+                    exchange = %source_name,
+                    "✅ 溢价回归正常 ({:.2}%)，重置报警状态",
+                    premium_pct
+                );
+                alert_states.insert(source_name.to_string(), false);
+                strategy.reset_if_needed(source_name);
             }
         },
         Err(e) => {
